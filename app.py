@@ -79,14 +79,14 @@ def analyze_purchase_patterns(transactions):
     total_points = 0
 
     for tx in transactions:
-        if 'category' in tx:
+        if tx.get('category'):
             categories.append(tx['category'])
-        if 'productName' in tx:
+        if tx.get('productName'):
             items.append(tx['productName'])
-        if 'purchaseAmount' in tx:
-            total_spent += tx['purchaseAmount']
-        if 'points' in tx:
-            total_points += tx['points']
+        if tx.get('purchaseAmount') is not None:
+            total_spent += tx.get('purchaseAmount', 0) or 0
+        if tx.get('points') is not None:
+            total_points += tx.get('points', 0) or 0
 
     category_counts = Counter(categories)
     top_categories = category_counts.most_common(5)
