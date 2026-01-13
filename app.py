@@ -8,8 +8,8 @@ import random
 import os
 import requests
 
-# API Configuration
-API_BASE_URL = "https://f66597fa63dc.ngrok-free.app/api"
+# API Configuration - reads from environment variable
+API_BASE_URL = os.getenv("API_BASE_URL", "https://f66597fa63dc.ngrok-free.app") + "/api"
 CUSTOMER_ID = "CUST001"
 
 @st.cache_data(ttl=60)
