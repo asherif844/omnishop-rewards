@@ -559,9 +559,11 @@ def render_sidebar():
 
     st.sidebar.markdown("---")
 
-    # Points display
-    st.sidebar.metric("Available Points", f"{member['points']:,}")
-    st.sidebar.caption(f"Lifetime: {member['lifetime_points']:,} points")
+    # Points display - fetch live from API
+    api_data = fetch_customer_data()
+    live_points = api_data.get('pointsBalance', member['points']) if api_data else member['points']
+    st.sidebar.metric("Available Points", f"{live_points:,}")
+    st.sidebar.caption("Live balance from API")
 
     # Tier progress
     progress, remaining = calculate_next_tier_progress(member)
@@ -598,8 +600,12 @@ def render_dashboard():
 
     redemption_stats = st.session_state.redemption_stats
 
+    # Fetch live balance from API
+    api_balance = fetch_customer_data()
+    live_points = api_balance.get('pointsBalance', member['points']) if api_balance else member['points']
+
     with col1:
-        st.metric("Points Balance", f"{member['points']:,}", "+150 this week")
+        st.metric("Points Balance", f"{live_points:,}", "Live from API")
     with col2:
         st.metric("Total Value Redeemed", f"${redemption_stats['total_value_redeemed']:,.2f}", f"{redemption_stats['total_redemptions']} items")
     with col3:
