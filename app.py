@@ -1143,9 +1143,9 @@ def render_transaction_history():
             {'date': '2026-01-13', 'type': 'Earned', 'description': 'Purchase', 'category': 'Electronics', 'amount': 100, 'points': 150, 'balance': 18574},
         ]
 
-    # Summary metrics
-    total_earned = sum(tx['points'] for tx in transactions)
-    total_spent = sum(tx['amount'] for tx in transactions)
+    # Summary metrics - handle None values
+    total_earned = sum(tx.get('points', 0) or 0 for tx in transactions)
+    total_spent = sum(tx.get('amount', 0) or 0 for tx in transactions)
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
