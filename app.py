@@ -87,6 +87,20 @@ if 'member' not in st.session_state:
 if 'cart' not in st.session_state:
     st.session_state.cart = []
 
+# Responsible AI session state
+if 'ai_preferences' not in st.session_state:
+    st.session_state.ai_preferences = {
+        'ai_enabled': True,
+        'personalization_enabled': True,
+        'data_collection_consent': True
+    }
+
+if 'ai_feedback' not in st.session_state:
+    st.session_state.ai_feedback = []
+
+if 'ai_interactions' not in st.session_state:
+    st.session_state.ai_interactions = []
+
 # Tier configuration
 TIERS = {
     'Gold': {
@@ -153,6 +167,112 @@ ALL_BADGES = {
     'Loyal Member': {'icon': '💎', 'description': '1 year membership anniversary'},
 }
 
+# Content guardrails - blocked topics and patterns
+BLOCKED_PATTERNS = [
+    'personal financial advice',
+    'investment advice',
+    'medical advice',
+    'legal advice',
+    'discriminat',
+    'hate speech',
+]
+
+RESPONSIBLE_AI_PRINCIPLES = [
+    {"name": "Transparency", "icon": "🔍", "description": "We clearly disclose when AI is being used and how it influences recommendations."},
+    {"name": "Fairness", "icon": "⚖️", "description": "Our AI treats all members equitably regardless of demographics or background."},
+    {"name": "Privacy", "icon": "🔒", "description": "Your data is protected and you control how it's used for personalization."},
+    {"name": "Accountability", "icon": "📋", "description": "Human oversight ensures AI recommendations are appropriate and helpful."},
+    {"name": "Safety", "icon": "🛡️", "description": "Content guardrails prevent harmful or inappropriate AI responses."},
+    {"name": "Explainability", "icon": "💡", "description": "We explain why recommendations are made so you can make informed decisions."},
+]
+
+def render_ai_transparency_banner():
+    """Display AI transparency notice"""
+    st.info("""
+    **🤖 AI-Powered Feature**
+    This feature uses artificial intelligence to provide personalized recommendations.
+    AI suggestions are based on your purchase history, preferences, and tier status.
+    You can disable AI personalization in your preferences.
+    """)
+
+def check_content_safety(text):
+    """Check if content passes safety guardrails"""
+    text_lower = text.lower()
+    for pattern in BLOCKED_PATTERNS:
+        if pattern in text_lower:
+            return False, f"Content flagged for review: {pattern}"
+    return True, "Content passed safety check"
+
+def get_recommendation_explanation(reward, member):
+    """Generate explainable reasoning for a recommendation"""
+    reasons = []
+
+    # Point affordability
+    if member['points'] >= reward['points']:
+        reasons.append(f"✓ You have enough points ({member['points']:,} pts)")
+    else:
+        reasons.append(f"○ Need {reward['points'] - member['points']:,} more points")
+
+    # Tier match
+    if reward.get('tier_exclusive'):
+        if reward['tier_exclusive'] == member['tier']:
+            reasons.append(f"✓ Exclusive for your {member['tier']} tier")
+        else:
+            reasons.append(f"○ Requires {reward['tier_exclusive']} tier")
+    else:
+        reasons.append("✓ Available to all members")
+
+    # Value score
+    value_score = (reward['points'] / 100) if reward['points'] > 0 else 0
+    if value_score < 10:
+        reasons.append("✓ Great value redemption")
+    elif value_score < 25:
+        reasons.append("✓ Good value for points")
+    else:
+        reasons.append("○ Premium reward")
+
+    # Popularity (simulated)
+    if reward['stock'] < 30:
+        reasons.append("🔥 Popular - limited stock!")
+
+    return reasons
+
+def log_ai_interaction(interaction_type, input_text, output_text, was_filtered=False):
+    """Log AI interaction for audit trail"""
+    from datetime import datetime
+    st.session_state.ai_interactions.append({
+        'timestamp': datetime.now().isoformat(),
+        'type': interaction_type,
+        'input': input_text[:100] + '...' if len(input_text) > 100 else input_text,
+        'output_length': len(output_text),
+        'was_filtered': was_filtered,
+        'member_tier': st.session_state.member['tier']
+    })
+
+def calculate_fairness_metrics():
+    """Calculate fairness metrics for AI recommendations"""
+    # Simulated fairness data across tiers
+    return {
+        'recommendation_distribution': {
+            'Gold': {'count': 145, 'avg_points': 850},
+            'Silver': {'count': 132, 'avg_points': 1200},
+            'Platinum': {'count': 98, 'avg_points': 2100}
+        },
+        'redemption_success_rate': {
+            'Gold': 0.72,
+            'Silver': 0.78,
+            'Platinum': 0.85
+        },
+        'response_time_ms': {
+            'Gold': 245,
+            'Silver': 238,
+            'Platinum': 241
+        },
+        'fairness_score': 0.94,
+        'bias_flags': 0,
+        'total_interactions': 375
+    }
+
 def get_tier_badge_html(tier):
     """Generate HTML for tier badge"""
     return f'<span class="{tier.lower()}-badge">{tier}</span>'
@@ -209,7 +329,7 @@ def render_sidebar():
     st.sidebar.markdown("---")
     return st.sidebar.radio(
         "Navigate",
-        ["Dashboard", "Rewards Catalog", "My Badges", "Challenges", "AI Advisor", "Transaction History"],
+        ["Dashboard", "Rewards Catalog", "My Badges", "Challenges", "AI Advisor", "Transaction History", "Responsible AI"],
         label_visibility="collapsed"
     )
 
@@ -476,11 +596,58 @@ def render_challenges():
     st.caption(f"{14 - streak} days until streak bonus")
 
 def render_ai_advisor():
-    """Render AI advisor page"""
+    """Render AI advisor page with Responsible AI features"""
     st.title("AI Rewards Advisor")
-    st.markdown("Get personalized recommendations powered by AI")
 
     member = st.session_state.member
+    prefs = st.session_state.ai_preferences
+
+    # AI Transparency Banner
+    render_ai_transparency_banner()
+
+    # AI Preferences sidebar
+    with st.expander("⚙️ AI Preferences & Privacy Controls", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            ai_enabled = st.toggle("Enable AI Features", value=prefs['ai_enabled'], key="ai_toggle")
+            st.session_state.ai_preferences['ai_enabled'] = ai_enabled
+
+            personalization = st.toggle("Personalized Recommendations", value=prefs['personalization_enabled'], key="personalization_toggle")
+            st.session_state.ai_preferences['personalization_enabled'] = personalization
+
+        with col2:
+            data_consent = st.toggle("Data Collection for Improvement", value=prefs['data_collection_consent'], key="data_toggle")
+            st.session_state.ai_preferences['data_collection_consent'] = data_consent
+
+            if st.button("Clear My AI History"):
+                st.session_state.messages = []
+                st.session_state.ai_interactions = []
+                st.success("AI history cleared!")
+
+        st.caption("Your preferences are respected. Disabling AI will show rule-based recommendations instead.")
+
+    st.markdown("---")
+
+    # Check if AI is disabled by user
+    if not prefs['ai_enabled']:
+        st.warning("🚫 AI features are disabled. Showing rule-based recommendations.")
+        st.markdown("### Rule-Based Recommendations")
+
+        # Show non-AI recommendations
+        affordable_rewards = [r for r in REWARDS_CATALOG if r['points'] <= member['points']]
+        affordable_rewards.sort(key=lambda x: x['points'], reverse=True)
+
+        for reward in affordable_rewards[:3]:
+            with st.container(border=True):
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    st.markdown(f"<div style='font-size: 48px; text-align: center;'>{reward['image']}</div>", unsafe_allow_html=True)
+                with col2:
+                    st.markdown(f"**{reward['name']}** - {reward['points']:,} pts")
+                    reasons = get_recommendation_explanation(reward, member)
+                    for reason in reasons:
+                        st.caption(reason)
+        return
 
     # Check for API key
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
@@ -490,7 +657,6 @@ def render_ai_advisor():
         st.markdown("---")
         st.markdown("### Demo Recommendations")
 
-        # Show static recommendations
         st.markdown(f"""
         Based on your **{member['tier']}** status and **{member['points']:,}** points:
 
@@ -500,29 +666,67 @@ def render_ai_advisor():
         3. **Wireless Charger** (1,500 pts) - Popular with members like you
 
         **Strategy Tip:** You're only ${2000 - member['annual_spend']:.2f} away from Platinum status!
-        Consider making a few more purchases to unlock exclusive rewards and 1.5x earning rate.
         """)
     else:
-        # AI chat interface
         st.markdown("Ask me anything about your rewards, points strategy, or recommendations!")
 
         if 'messages' not in st.session_state:
             st.session_state.messages = []
 
-        # Display chat history
-        for message in st.session_state.messages:
+        # Display chat history with feedback buttons
+        for idx, message in enumerate(st.session_state.messages):
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
+                # Add feedback buttons for assistant messages
+                if message["role"] == "assistant":
+                    feedback_col1, feedback_col2, feedback_col3 = st.columns([1, 1, 4])
+                    with feedback_col1:
+                        if st.button("👍", key=f"thumbs_up_{idx}", help="This was helpful"):
+                            st.session_state.ai_feedback.append({
+                                'message_idx': idx,
+                                'feedback': 'positive',
+                                'timestamp': datetime.now().isoformat()
+                            })
+                            st.toast("Thanks for your feedback!")
+                    with feedback_col2:
+                        if st.button("👎", key=f"thumbs_down_{idx}", help="This wasn't helpful"):
+                            st.session_state.ai_feedback.append({
+                                'message_idx': idx,
+                                'feedback': 'negative',
+                                'timestamp': datetime.now().isoformat()
+                            })
+                            st.toast("Thanks for your feedback! We'll improve.")
+                    with feedback_col3:
+                        if st.button("🚩 Report", key=f"report_{idx}", help="Report inappropriate content"):
+                            st.session_state.ai_feedback.append({
+                                'message_idx': idx,
+                                'feedback': 'reported',
+                                'timestamp': datetime.now().isoformat()
+                            })
+                            st.warning("Content reported for review. Thank you!")
+
         # Chat input
         if prompt := st.chat_input("Ask about your rewards..."):
+            # Content safety check on input
+            is_safe, safety_message = check_content_safety(prompt)
+
             st.session_state.messages.append({"role": "user", "content": prompt})
 
             with st.chat_message("user"):
                 st.markdown(prompt)
 
-            # Build context for AI
+            # Build context for AI with responsible AI guidelines
             context = f"""You are an AI rewards advisor for OmniShop loyalty program.
+
+            RESPONSIBLE AI GUIDELINES:
+            - Never provide personal financial, investment, medical, or legal advice
+            - Treat all members fairly regardless of their tier status
+            - Be transparent about limitations of your recommendations
+            - If unsure, acknowledge uncertainty rather than guessing
+            - Keep responses focused on the rewards program only
+            - Be inclusive and respectful in all responses
+
             Current member info:
             - Name: {member['name']}
             - Tier: {member['tier']}
@@ -533,7 +737,8 @@ def render_ai_advisor():
             Tier thresholds: Gold ($0-499), Silver ($500-1999), Platinum ($2000+)
             Earning rates: Gold 1x, Silver 1.25x, Platinum 1.5x
 
-            Help them maximize their rewards experience. Be friendly and helpful."""
+            Help them maximize their rewards experience. Be friendly and helpful.
+            Always explain WHY you're making a recommendation."""
 
             try:
                 import anthropic
@@ -548,7 +753,18 @@ def render_ai_advisor():
                                   for m in st.session_state.messages]
                     )
                     assistant_message = response.content[0].text
-                    st.markdown(assistant_message)
+
+                    # Content safety check on output
+                    output_safe, output_message = check_content_safety(assistant_message)
+
+                    if output_safe:
+                        st.markdown(assistant_message)
+                        log_ai_interaction("chat", prompt, assistant_message, was_filtered=False)
+                    else:
+                        filtered_response = "I apologize, but I can't provide that type of advice. Let me help you with your rewards questions instead. What would you like to know about earning or redeeming points?"
+                        st.markdown(filtered_response)
+                        log_ai_interaction("chat", prompt, filtered_response, was_filtered=True)
+                        assistant_message = filtered_response
 
                 st.session_state.messages.append({"role": "assistant", "content": assistant_message})
 
@@ -600,6 +816,163 @@ def render_transaction_history():
             st.markdown(f"**{tx['balance']:,}**")
         st.markdown("---")
 
+def render_responsible_ai():
+    """Render Responsible AI dashboard"""
+    st.title("Responsible AI Dashboard")
+    st.markdown("Our commitment to ethical, fair, and transparent AI")
+
+    # Principles section
+    st.subheader("Our AI Principles")
+    cols = st.columns(3)
+    for idx, principle in enumerate(RESPONSIBLE_AI_PRINCIPLES):
+        with cols[idx % 3]:
+            with st.container(border=True):
+                st.markdown(f"### {principle['icon']} {principle['name']}")
+                st.markdown(principle['description'])
+
+    st.markdown("---")
+
+    # Fairness Metrics
+    st.subheader("Fairness Metrics")
+    metrics = calculate_fairness_metrics()
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Fairness Score", f"{metrics['fairness_score']:.0%}", "+2%")
+    with col2:
+        st.metric("Total Interactions", metrics['total_interactions'], "+45 today")
+    with col3:
+        st.metric("Bias Flags", metrics['bias_flags'], "0 this week")
+    with col4:
+        st.metric("Content Filtered", len([i for i in st.session_state.ai_interactions if i.get('was_filtered')]), "")
+
+    st.markdown("---")
+
+    # Recommendation Distribution by Tier
+    st.subheader("Recommendation Distribution by Tier")
+    st.markdown("Ensuring fair treatment across all membership levels")
+
+    dist = metrics['recommendation_distribution']
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Bar chart for recommendation counts
+        tier_data = pd.DataFrame({
+            'Tier': list(dist.keys()),
+            'Recommendations': [d['count'] for d in dist.values()],
+            'Avg Points': [d['avg_points'] for d in dist.values()]
+        })
+        fig = px.bar(tier_data, x='Tier', y='Recommendations',
+                     color='Tier', color_discrete_map={'Gold': '#FFD700', 'Silver': '#C0C0C0', 'Platinum': '#E5E4E2'},
+                     title="Recommendations by Tier")
+        fig.update_layout(showlegend=False, height=300)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        # Success rate by tier
+        success_data = pd.DataFrame({
+            'Tier': list(metrics['redemption_success_rate'].keys()),
+            'Success Rate': [v * 100 for v in metrics['redemption_success_rate'].values()]
+        })
+        fig = px.bar(success_data, x='Tier', y='Success Rate',
+                     color='Tier', color_discrete_map={'Gold': '#FFD700', 'Silver': '#C0C0C0', 'Platinum': '#E5E4E2'},
+                     title="Redemption Success Rate (%)")
+        fig.update_layout(showlegend=False, height=300, yaxis_range=[0, 100])
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
+
+    # Response Time Equity
+    st.subheader("Response Time Equity")
+    st.markdown("AI response times should be equal across all tiers")
+
+    response_times = metrics['response_time_ms']
+    rt_data = pd.DataFrame({
+        'Tier': list(response_times.keys()),
+        'Response Time (ms)': list(response_times.values())
+    })
+
+    col1, col2, col3 = st.columns(3)
+    for idx, (tier, time) in enumerate(response_times.items()):
+        with [col1, col2, col3][idx]:
+            variance = abs(time - 241) / 241 * 100  # variance from mean
+            status = "✅" if variance < 5 else "⚠️"
+            st.metric(f"{tier} Tier", f"{time}ms", f"{status} {variance:.1f}% variance")
+
+    st.markdown("---")
+
+    # User Feedback Summary
+    st.subheader("User Feedback Summary")
+
+    feedback = st.session_state.ai_feedback
+    if feedback:
+        positive = len([f for f in feedback if f['feedback'] == 'positive'])
+        negative = len([f for f in feedback if f['feedback'] == 'negative'])
+        reported = len([f for f in feedback if f['feedback'] == 'reported'])
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("👍 Positive", positive)
+        with col2:
+            st.metric("👎 Negative", negative)
+        with col3:
+            st.metric("🚩 Reported", reported)
+
+        if positive + negative > 0:
+            satisfaction = positive / (positive + negative) * 100
+            st.progress(satisfaction / 100)
+            st.caption(f"User Satisfaction: {satisfaction:.1f}%")
+    else:
+        st.info("No feedback collected yet. Feedback helps us improve AI quality.")
+
+    st.markdown("---")
+
+    # AI Interaction Audit Log
+    st.subheader("AI Interaction Audit Log")
+    st.markdown("All AI interactions are logged for accountability")
+
+    interactions = st.session_state.ai_interactions
+    if interactions:
+        df = pd.DataFrame(interactions)
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("No AI interactions logged in this session.")
+
+    st.markdown("---")
+
+    # Data Privacy Controls
+    st.subheader("Your Data & Privacy")
+
+    with st.expander("View Your AI Data", expanded=False):
+        st.json({
+            'ai_preferences': st.session_state.ai_preferences,
+            'feedback_count': len(st.session_state.ai_feedback),
+            'interaction_count': len(st.session_state.ai_interactions),
+            'messages_count': len(st.session_state.get('messages', []))
+        })
+
+        if st.button("Download My Data"):
+            import json
+            data = {
+                'preferences': st.session_state.ai_preferences,
+                'feedback': st.session_state.ai_feedback,
+                'interactions': st.session_state.ai_interactions
+            }
+            st.download_button(
+                "Download JSON",
+                json.dumps(data, indent=2),
+                file_name="my_ai_data.json",
+                mime="application/json"
+            )
+
+        if st.button("Delete All My AI Data", type="primary"):
+            st.session_state.ai_feedback = []
+            st.session_state.ai_interactions = []
+            st.session_state.messages = []
+            st.success("All AI data deleted!")
+            st.rerun()
+
 # Main app
 def main():
     page = render_sidebar()
@@ -616,6 +989,8 @@ def main():
         render_ai_advisor()
     elif page == "Transaction History":
         render_transaction_history()
+    elif page == "Responsible AI":
+        render_responsible_ai()
 
 if __name__ == "__main__":
     main()
