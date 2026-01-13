@@ -3,8 +3,131 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+from collections import Counter
 import random
 import os
+import requests
+
+# API Configuration
+API_BASE_URL = "https://f66597fa63dc.ngrok-free.app/api"
+CUSTOMER_ID = "CUST001"
+
+@st.cache_data(ttl=60)
+def fetch_customer_data():
+    """Fetch customer balance and info from API"""
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/customers/{CUSTOMER_ID}/balance/",
+            headers={"ngrok-skip-browser-warning": "true"},
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        st.error(f"Error fetching customer data: {e}")
+    return None
+
+@st.cache_data(ttl=60)
+def fetch_transactions():
+    """Fetch customer transactions from API"""
+    try:
+        response = requests.get(
+            f"{API_BASE_URL}/customers/{CUSTOMER_ID}/transactions/",
+            headers={"ngrok-skip-browser-warning": "true"},
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        st.error(f"Error fetching transactions: {e}")
+    return None
+
+def analyze_purchase_patterns(transactions):
+    """Analyze purchase history to identify patterns and preferences"""
+    if not transactions:
+        return {}
+
+    categories = []
+    items = []
+    total_spent = 0
+    total_points = 0
+
+    for tx in transactions:
+        if 'category' in tx:
+            categories.append(tx['category'])
+        if 'productName' in tx:
+            items.append(tx['productName'])
+        if 'purchaseAmount' in tx:
+            total_spent += tx['purchaseAmount']
+        if 'points' in tx:
+            total_points += tx['points']
+
+    category_counts = Counter(categories)
+    top_categories = category_counts.most_common(5)
+
+    return {
+        'top_categories': top_categories,
+        'total_transactions': len(transactions),
+        'total_spent': total_spent,
+        'total_points_earned': total_points,
+        'recent_items': items[:10],
+        'favorite_category': top_categories[0][0] if top_categories else None
+    }
+
+def get_personalized_recommendations(transactions, rewards_catalog, member_points):
+    """Generate personalized recommendations based on purchase history"""
+    patterns = analyze_purchase_patterns(transactions)
+    recommendations = []
+
+    # Category-based recommendations
+    category_mapping = {
+        'Electronics': ['Merchandise', 'Digital'],
+        'Health': ['Experiences', 'Merchandise'],
+        'Groceries': ['Gift Cards', 'Discounts'],
+        'Food': ['Gift Cards', 'Discounts'],
+        'Home': ['Merchandise', 'Gift Cards'],
+        'Clothing': ['Gift Cards', 'Discounts']
+    }
+
+    favorite_cat = patterns.get('favorite_category', 'Electronics')
+    preferred_reward_types = category_mapping.get(favorite_cat, ['Gift Cards'])
+
+    for reward in rewards_catalog:
+        score = 0
+        reasons = []
+
+        # Affordability score
+        if reward['points'] <= member_points:
+            score += 30
+            reasons.append("Within your points balance")
+
+        # Category match score
+        if reward['category'] in preferred_reward_types:
+            score += 25
+            reasons.append(f"Matches your {favorite_cat} shopping preference")
+
+        # Value score (points per dollar equivalent)
+        if reward['points'] < 1000:
+            score += 15
+            reasons.append("Great value redemption")
+        elif reward['points'] < 2000:
+            score += 10
+            reasons.append("Good value for points")
+
+        # Stock urgency
+        if reward['stock'] < 30:
+            score += 10
+            reasons.append("Limited availability")
+
+        recommendations.append({
+            'reward': reward,
+            'score': score,
+            'reasons': reasons
+        })
+
+    # Sort by score
+    recommendations.sort(key=lambda x: x['score'], reverse=True)
+    return recommendations[:5], patterns
 
 # Page configuration
 st.set_page_config(
@@ -68,21 +191,56 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
+# Initialize session state with API data
 if 'member' not in st.session_state:
-    st.session_state.member = {
-        'id': 'MEM-001',
-        'name': 'Alex Johnson',
-        'email': 'alex.johnson@email.com',
-        'tier': 'Silver',
-        'points': 2450,
-        'lifetime_points': 8750,
-        'annual_spend': 1250.00,
-        'member_since': '2024-03-15',
-        'badges': ['First Purchase', 'Review Writer', 'Social Sharer', 'Streak Master'],
-        'streak_days': 12,
-        'redeemed_rewards': []
-    }
+    # Fetch real data from API
+    customer_data = fetch_customer_data()
+    transactions_data = fetch_transactions()
+
+    if customer_data:
+        # Calculate tier based on total spent
+        patterns = analyze_purchase_patterns(transactions_data) if transactions_data else {}
+        total_spent = patterns.get('total_spent', 0)
+
+        if total_spent >= 2000:
+            tier = 'Platinum'
+        elif total_spent >= 500:
+            tier = 'Silver'
+        else:
+            tier = 'Gold'
+
+        st.session_state.member = {
+            'id': customer_data.get('customerId', 'CUST001'),
+            'name': customer_data.get('customerName', 'Alex D.'),
+            'email': 'alex.d@email.com',
+            'tier': tier,
+            'points': customer_data.get('pointsBalance', 0),
+            'lifetime_points': patterns.get('total_points_earned', 0),
+            'annual_spend': total_spent,
+            'member_since': customer_data.get('createdAt', '2026-01-13')[:10],
+            'badges': ['First Purchase', 'Review Writer', 'Social Sharer', 'Streak Master', 'Big Spender', 'Early Bird'],
+            'streak_days': 12,
+            'redeemed_rewards': []
+        }
+    else:
+        # Fallback to defaults if API fails
+        st.session_state.member = {
+            'id': 'CUST001',
+            'name': 'Alex D.',
+            'email': 'alex.d@email.com',
+            'tier': 'Silver',
+            'points': 18574,
+            'lifetime_points': 19222,
+            'annual_spend': 1531.58,
+            'member_since': '2026-01-13',
+            'badges': ['First Purchase', 'Review Writer', 'Social Sharer', 'Streak Master', 'Big Spender'],
+            'streak_days': 12,
+            'redeemed_rewards': []
+        }
+
+# Store transactions in session state
+if 'transactions_data' not in st.session_state:
+    st.session_state.transactions_data = fetch_transactions()
 
 if 'cart' not in st.session_state:
     st.session_state.cart = []
@@ -716,7 +874,23 @@ def render_ai_advisor():
             with st.chat_message("user"):
                 st.markdown(prompt)
 
-            # Build context for AI with responsible AI guidelines
+            # Get purchase patterns for personalized context
+            transactions_data = st.session_state.get('transactions_data', [])
+            patterns = analyze_purchase_patterns(transactions_data)
+
+            # Build recent purchases string
+            recent_purchases = ""
+            if transactions_data:
+                for tx in transactions_data[:5]:
+                    recent_purchases += f"- {tx.get('productName', 'Item')} (${tx.get('purchaseAmount', 0):.2f}, {tx.get('category', 'Other')})\n"
+
+            # Get personalized recommendations
+            recommendations, _ = get_personalized_recommendations(transactions_data, REWARDS_CATALOG, member['points'])
+            rec_text = ""
+            for rec in recommendations[:3]:
+                rec_text += f"- {rec['reward']['name']} ({rec['reward']['points']:,} pts): {', '.join(rec['reasons'][:2])}\n"
+
+            # Build context for AI with responsible AI guidelines and purchase history
             context = f"""You are an AI rewards advisor for OmniShop loyalty program.
 
             RESPONSIBLE AI GUIDELINES:
@@ -730,15 +904,29 @@ def render_ai_advisor():
             Current member info:
             - Name: {member['name']}
             - Tier: {member['tier']}
-            - Points: {member['points']:,}
-            - Annual spend: ${member['annual_spend']:.2f}
+            - Points Balance: {member['points']:,}
+            - Total Spent: ${member['annual_spend']:.2f}
             - Streak: {member['streak_days']} days
+
+            PURCHASE HISTORY ANALYSIS:
+            - Total Transactions: {patterns.get('total_transactions', 0)}
+            - Total Points Earned: {patterns.get('total_points_earned', 0):,}
+            - Favorite Category: {patterns.get('favorite_category', 'Unknown')}
+            - Top Categories: {', '.join([f"{cat} ({count})" for cat, count in patterns.get('top_categories', [])[:3]])}
+
+            Recent Purchases:
+            {recent_purchases}
+
+            PERSONALIZED REWARD RECOMMENDATIONS (based on purchase history):
+            {rec_text}
 
             Tier thresholds: Gold ($0-499), Silver ($500-1999), Platinum ($2000+)
             Earning rates: Gold 1x, Silver 1.25x, Platinum 1.5x
 
+            Use the purchase history to make personalized recommendations.
+            Reference specific past purchases when suggesting rewards.
             Help them maximize their rewards experience. Be friendly and helpful.
-            Always explain WHY you're making a recommendation."""
+            Always explain WHY you're making a recommendation based on their shopping behavior."""
 
             try:
                 import anthropic
@@ -772,49 +960,93 @@ def render_ai_advisor():
                 st.error(f"Error connecting to AI: {str(e)}")
 
 def render_transaction_history():
-    """Render transaction history"""
+    """Render transaction history from API"""
     st.title("Transaction History")
 
-    # Sample transaction data
-    transactions = [
-        {'date': '2026-01-13', 'type': 'Earned', 'description': 'Purchase at OmniShop Online', 'points': 125, 'balance': 2450},
-        {'date': '2026-01-12', 'type': 'Earned', 'description': 'Review bonus', 'points': 50, 'balance': 2325},
-        {'date': '2026-01-10', 'type': 'Redeemed', 'description': '$10 Gift Card', 'points': -500, 'balance': 2275},
-        {'date': '2026-01-08', 'type': 'Earned', 'description': 'Purchase at Store #142', 'points': 200, 'balance': 2775},
-        {'date': '2026-01-05', 'type': 'Bonus', 'description': 'Streak bonus (7 days)', 'points': 100, 'balance': 2575},
-        {'date': '2026-01-03', 'type': 'Earned', 'description': 'Purchase at OmniShop Online', 'points': 175, 'balance': 2475},
-        {'date': '2025-12-28', 'type': 'Earned', 'description': 'Holiday bonus 2x points', 'points': 300, 'balance': 2300},
-        {'date': '2025-12-25', 'type': 'Bonus', 'description': 'Birthday reward', 'points': 250, 'balance': 2000},
-    ]
+    member = st.session_state.member
+
+    # Fetch real transactions from API
+    api_transactions = st.session_state.get('transactions_data', [])
+
+    if api_transactions:
+        st.success(f"Showing {len(api_transactions)} transactions from your account")
+
+        # Convert API data to display format
+        transactions = []
+        running_balance = member['points']
+
+        for tx in reversed(api_transactions):  # Most recent first
+            transactions.append({
+                'date': tx.get('timestamp', '')[:10] if tx.get('timestamp') else 'N/A',
+                'type': 'Earned',
+                'description': tx.get('productName', 'Purchase'),
+                'category': tx.get('category', 'Other'),
+                'amount': tx.get('purchaseAmount', 0),
+                'points': tx.get('points', 0),
+                'balance': running_balance
+            })
+            running_balance -= tx.get('points', 0)
+
+        transactions.reverse()  # Back to chronological order
+    else:
+        st.warning("Unable to fetch transactions from API. Showing sample data.")
+        transactions = [
+            {'date': '2026-01-13', 'type': 'Earned', 'description': 'Purchase', 'category': 'Electronics', 'amount': 100, 'points': 150, 'balance': 18574},
+        ]
+
+    # Summary metrics
+    total_earned = sum(tx['points'] for tx in transactions)
+    total_spent = sum(tx['amount'] for tx in transactions)
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Transactions", len(transactions))
+    with col2:
+        st.metric("Points Earned", f"{total_earned:,}")
+    with col3:
+        st.metric("Total Spent", f"${total_spent:,.2f}")
+    with col4:
+        st.metric("Current Balance", f"{member['points']:,}")
+
+    st.markdown("---")
 
     # Filter options
     col1, col2 = st.columns(2)
     with col1:
-        type_filter = st.selectbox("Transaction Type", ["All", "Earned", "Redeemed", "Bonus"])
+        categories = ['All'] + list(set(tx.get('category', 'Other') for tx in transactions))
+        category_filter = st.selectbox("Category", categories)
     with col2:
-        date_range = st.selectbox("Date Range", ["Last 7 days", "Last 30 days", "Last 90 days", "All time"])
+        sort_order = st.selectbox("Sort By", ["Newest First", "Oldest First", "Highest Points", "Highest Amount"])
 
-    # Display transactions
-    df = pd.DataFrame(transactions)
+    # Filter and sort
+    filtered_tx = transactions.copy()
+    if category_filter != "All":
+        filtered_tx = [tx for tx in filtered_tx if tx.get('category') == category_filter]
 
-    if type_filter != "All":
-        df = df[df['type'] == type_filter]
+    if sort_order == "Newest First":
+        filtered_tx.reverse()
+    elif sort_order == "Highest Points":
+        filtered_tx.sort(key=lambda x: x['points'], reverse=True)
+    elif sort_order == "Highest Amount":
+        filtered_tx.sort(key=lambda x: x['amount'], reverse=True)
 
     st.markdown("---")
 
-    for _, tx in df.iterrows():
-        col1, col2, col3 = st.columns([2, 3, 1])
-        with col1:
-            st.caption(tx['date'])
-            color = '#28a745' if tx['points'] > 0 else '#dc3545'
-            st.markdown(f"<span style='color: {color}; font-weight: bold;'>{'+' if tx['points'] > 0 else ''}{tx['points']} pts</span>", unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"**{tx['type']}**")
-            st.caption(tx['description'])
-        with col3:
-            st.caption("Balance")
-            st.markdown(f"**{tx['balance']:,}**")
-        st.markdown("---")
+    # Display transactions
+    for tx in filtered_tx:
+        with st.container(border=True):
+            col1, col2, col3, col4 = st.columns([2, 3, 1, 1])
+            with col1:
+                st.caption(tx['date'])
+                st.markdown(f"**{tx.get('category', 'Purchase')}**")
+            with col2:
+                st.markdown(f"**{tx['description']}**")
+                st.caption(f"${tx['amount']:.2f}")
+            with col3:
+                st.markdown(f":green[**+{tx['points']:,} pts**]")
+            with col4:
+                st.caption("Balance")
+                st.markdown(f"**{tx['balance']:,}**")
 
 def render_responsible_ai():
     """Render Responsible AI dashboard"""
