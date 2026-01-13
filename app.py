@@ -42,7 +42,7 @@ def fetch_transactions():
         st.error(f"Error fetching transactions: {e}")
     return None
 
-def post_redemption(customer_id, reward_name, points_cost, reward_category):
+def post_redemption(customer_id, reward_name, points_cost, reward_category, reward_value):
     """Post a redemption to the API"""
     try:
         payload = {
@@ -50,6 +50,7 @@ def post_redemption(customer_id, reward_name, points_cost, reward_category):
             "rewardName": reward_name,
             "pointsRedeemed": points_cost,
             "category": reward_category,
+            "rewardValue": reward_value,
             "redeemedAt": datetime.now().isoformat()
         }
         response = requests.post(
@@ -285,6 +286,15 @@ if 'ai_feedback' not in st.session_state:
 if 'ai_interactions' not in st.session_state:
     st.session_state.ai_interactions = []
 
+# Redemption tracking
+if 'redemption_stats' not in st.session_state:
+    st.session_state.redemption_stats = {
+        'total_redemptions': 0,
+        'total_points_redeemed': 0,
+        'total_value_redeemed': 0.0,
+        'redemption_history': []
+    }
+
 # Tier configuration
 TIERS = {
     'Gold': {
@@ -310,23 +320,23 @@ TIERS = {
     }
 }
 
-# Sample reward catalog
+# Sample reward catalog with dollar values
 REWARDS_CATALOG = [
-    {'id': 1, 'name': '$10 Store Gift Card', 'category': 'Gift Cards', 'points': 500, 'image': '🎁', 'tier_exclusive': None, 'stock': 100},
-    {'id': 2, 'name': '$25 Store Gift Card', 'category': 'Gift Cards', 'points': 1200, 'image': '🎁', 'tier_exclusive': None, 'stock': 75},
-    {'id': 3, 'name': '$50 Store Gift Card', 'category': 'Gift Cards', 'points': 2300, 'image': '🎁', 'tier_exclusive': None, 'stock': 50},
-    {'id': 4, 'name': 'Premium Headphones', 'category': 'Merchandise', 'points': 5000, 'image': '🎧', 'tier_exclusive': None, 'stock': 25},
-    {'id': 5, 'name': 'Wireless Charger', 'category': 'Merchandise', 'points': 1500, 'image': '🔌', 'tier_exclusive': None, 'stock': 60},
-    {'id': 6, 'name': 'Smart Watch Band', 'category': 'Merchandise', 'points': 800, 'image': '⌚', 'tier_exclusive': None, 'stock': 80},
-    {'id': 7, 'name': 'VIP Shopping Experience', 'category': 'Experiences', 'points': 3500, 'image': '👔', 'tier_exclusive': 'Platinum', 'stock': 10},
-    {'id': 8, 'name': 'Personal Styling Session', 'category': 'Experiences', 'points': 2000, 'image': '✨', 'tier_exclusive': 'Silver', 'stock': 20},
-    {'id': 9, 'name': 'Streaming Subscription (1 month)', 'category': 'Digital', 'points': 600, 'image': '📺', 'tier_exclusive': None, 'stock': 200},
-    {'id': 10, 'name': 'E-Book Bundle', 'category': 'Digital', 'points': 400, 'image': '📚', 'tier_exclusive': None, 'stock': 150},
-    {'id': 11, 'name': '20% Off Coupon', 'category': 'Discounts', 'points': 300, 'image': '🏷️', 'tier_exclusive': None, 'stock': 500},
-    {'id': 12, 'name': 'Free Express Shipping (3 uses)', 'category': 'Discounts', 'points': 450, 'image': '🚚', 'tier_exclusive': None, 'stock': 300},
-    {'id': 13, 'name': 'Charity Donation - $10', 'category': 'Charitable', 'points': 500, 'image': '💝', 'tier_exclusive': None, 'stock': 999},
-    {'id': 14, 'name': 'Limited Edition Tote Bag', 'category': 'Merchandise', 'points': 1800, 'image': '👜', 'tier_exclusive': None, 'stock': 30, 'limited': True},
-    {'id': 15, 'name': 'Exclusive Member Event Access', 'category': 'Experiences', 'points': 4000, 'image': '🎉', 'tier_exclusive': 'Platinum', 'stock': 15},
+    {'id': 1, 'name': '$10 Store Gift Card', 'category': 'Gift Cards', 'points': 500, 'value': 10.00, 'image': '🎁', 'tier_exclusive': None, 'stock': 100},
+    {'id': 2, 'name': '$25 Store Gift Card', 'category': 'Gift Cards', 'points': 1200, 'value': 25.00, 'image': '🎁', 'tier_exclusive': None, 'stock': 75},
+    {'id': 3, 'name': '$50 Store Gift Card', 'category': 'Gift Cards', 'points': 2300, 'value': 50.00, 'image': '🎁', 'tier_exclusive': None, 'stock': 50},
+    {'id': 4, 'name': 'Premium Headphones', 'category': 'Merchandise', 'points': 5000, 'value': 149.99, 'image': '🎧', 'tier_exclusive': None, 'stock': 25},
+    {'id': 5, 'name': 'Wireless Charger', 'category': 'Merchandise', 'points': 1500, 'value': 39.99, 'image': '🔌', 'tier_exclusive': None, 'stock': 60},
+    {'id': 6, 'name': 'Smart Watch Band', 'category': 'Merchandise', 'points': 800, 'value': 24.99, 'image': '⌚', 'tier_exclusive': None, 'stock': 80},
+    {'id': 7, 'name': 'VIP Shopping Experience', 'category': 'Experiences', 'points': 3500, 'value': 150.00, 'image': '👔', 'tier_exclusive': 'Platinum', 'stock': 10},
+    {'id': 8, 'name': 'Personal Styling Session', 'category': 'Experiences', 'points': 2000, 'value': 75.00, 'image': '✨', 'tier_exclusive': 'Silver', 'stock': 20},
+    {'id': 9, 'name': 'Streaming Subscription (1 month)', 'category': 'Digital', 'points': 600, 'value': 15.99, 'image': '📺', 'tier_exclusive': None, 'stock': 200},
+    {'id': 10, 'name': 'E-Book Bundle', 'category': 'Digital', 'points': 400, 'value': 12.99, 'image': '📚', 'tier_exclusive': None, 'stock': 150},
+    {'id': 11, 'name': '20% Off Coupon', 'category': 'Discounts', 'points': 300, 'value': 20.00, 'image': '🏷️', 'tier_exclusive': None, 'stock': 500},
+    {'id': 12, 'name': 'Free Express Shipping (3 uses)', 'category': 'Discounts', 'points': 450, 'value': 29.97, 'image': '🚚', 'tier_exclusive': None, 'stock': 300},
+    {'id': 13, 'name': 'Charity Donation - $10', 'category': 'Charitable', 'points': 500, 'value': 10.00, 'image': '💝', 'tier_exclusive': None, 'stock': 999},
+    {'id': 14, 'name': 'Limited Edition Tote Bag', 'category': 'Merchandise', 'points': 1800, 'value': 45.00, 'image': '👜', 'tier_exclusive': None, 'stock': 30, 'limited': True},
+    {'id': 15, 'name': 'Exclusive Member Event Access', 'category': 'Experiences', 'points': 4000, 'value': 200.00, 'image': '🎉', 'tier_exclusive': 'Platinum', 'stock': 15},
 ]
 
 # Sample challenges
@@ -526,12 +536,14 @@ def render_dashboard():
     # Top metrics
     col1, col2, col3, col4 = st.columns(4)
 
+    redemption_stats = st.session_state.redemption_stats
+
     with col1:
         st.metric("Points Balance", f"{member['points']:,}", "+150 this week")
     with col2:
-        st.metric("Annual Spend", f"${member['annual_spend']:,.2f}", "+$125.00")
+        st.metric("Total Value Redeemed", f"${redemption_stats['total_value_redeemed']:,.2f}", f"{redemption_stats['total_redemptions']} items")
     with col3:
-        st.metric("Rewards Redeemed", len(member['redeemed_rewards']), "+1 this month")
+        st.metric("Points Redeemed", f"{redemption_stats['total_points_redeemed']:,}", f"{len(member['redeemed_rewards'])} rewards")
     with col4:
         earning_rate = TIERS[member['tier']]['earning_rate']
         st.metric("Earning Rate", f"{earning_rate}x", f"+{int((earning_rate-1)*100)}% bonus")
@@ -577,17 +589,29 @@ def render_dashboard():
             """, unsafe_allow_html=True)
             if st.button("Quick Redeem", key=f"rec_{reward['id']}"):
                 if member['points'] >= reward['points']:
-                    # Post to redemption API
+                    # Post to redemption API with value
+                    reward_value = reward.get('value', 0.0)
                     success, result = post_redemption(
                         member['id'],
                         reward['name'],
                         reward['points'],
-                        reward['category']
+                        reward['category'],
+                        reward_value
                     )
                     if success:
                         st.session_state.member['points'] -= reward['points']
                         st.session_state.member['redeemed_rewards'].append(reward)
-                        st.success(f"Redeemed {reward['name']}! Saved to your account.")
+                        # Track redemption stats
+                        st.session_state.redemption_stats['total_redemptions'] += 1
+                        st.session_state.redemption_stats['total_points_redeemed'] += reward['points']
+                        st.session_state.redemption_stats['total_value_redeemed'] += reward_value
+                        st.session_state.redemption_stats['redemption_history'].append({
+                            'reward': reward['name'],
+                            'points': reward['points'],
+                            'value': reward_value,
+                            'timestamp': datetime.now().isoformat()
+                        })
+                        st.success(f"Redeemed {reward['name']} (${reward_value:.2f})! Saved to your account.")
                         st.rerun()
                     else:
                         st.error(f"Redemption failed: {result}")
@@ -663,8 +687,9 @@ def render_rewards_catalog():
                 # Reward name
                 st.markdown(f"**{reward['name']}**")
 
-                # Category
-                st.caption(reward['category'])
+                # Category and Value
+                reward_value = reward.get('value', 0)
+                st.caption(f"{reward['category']} • Value: ${reward_value:.2f}")
 
                 # Points
                 if can_afford:
@@ -682,17 +707,29 @@ def render_rewards_catalog():
                     st.button(f"Need {reward['points'] - member['points']:,} more pts", disabled=True, key=f"cat_{reward['id']}")
                 else:
                     if st.button("Redeem Now", key=f"cat_{reward['id']}", type="primary"):
-                        # Post to redemption API
+                        # Post to redemption API with value
+                        reward_value = reward.get('value', 0.0)
                         success, result = post_redemption(
                             member['id'],
                             reward['name'],
                             reward['points'],
-                            reward['category']
+                            reward['category'],
+                            reward_value
                         )
                         if success:
                             st.session_state.member['points'] -= reward['points']
                             st.session_state.member['redeemed_rewards'].append(reward)
-                            st.success(f"Successfully redeemed {reward['name']}! Saved to your account.")
+                            # Track redemption stats
+                            st.session_state.redemption_stats['total_redemptions'] += 1
+                            st.session_state.redemption_stats['total_points_redeemed'] += reward['points']
+                            st.session_state.redemption_stats['total_value_redeemed'] += reward_value
+                            st.session_state.redemption_stats['redemption_history'].append({
+                                'reward': reward['name'],
+                                'points': reward['points'],
+                                'value': reward_value,
+                                'timestamp': datetime.now().isoformat()
+                            })
+                            st.success(f"Successfully redeemed {reward['name']} (${reward_value:.2f})! Saved to your account.")
                             st.balloons()
                             st.rerun()
                         else:
