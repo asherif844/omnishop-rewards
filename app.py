@@ -42,6 +42,32 @@ def fetch_transactions():
         st.error(f"Error fetching transactions: {e}")
     return None
 
+def post_redemption(customer_id, reward_name, points_cost, reward_category):
+    """Post a redemption to the API"""
+    try:
+        payload = {
+            "customerId": customer_id,
+            "rewardName": reward_name,
+            "pointsRedeemed": points_cost,
+            "category": reward_category,
+            "redeemedAt": datetime.now().isoformat()
+        }
+        response = requests.post(
+            f"{API_BASE_URL}/redemptions/",
+            headers={
+                "ngrok-skip-browser-warning": "true",
+                "Content-Type": "application/json"
+            },
+            json=payload,
+            timeout=10
+        )
+        if response.status_code in [200, 201]:
+            return True, response.json() if response.text else {"status": "success"}
+        else:
+            return False, f"API returned status {response.status_code}"
+    except Exception as e:
+        return False, str(e)
+
 def analyze_purchase_patterns(transactions):
     """Analyze purchase history to identify patterns and preferences"""
     if not transactions:
@@ -551,10 +577,20 @@ def render_dashboard():
             """, unsafe_allow_html=True)
             if st.button("Quick Redeem", key=f"rec_{reward['id']}"):
                 if member['points'] >= reward['points']:
-                    st.session_state.member['points'] -= reward['points']
-                    st.session_state.member['redeemed_rewards'].append(reward)
-                    st.success(f"Redeemed {reward['name']}!")
-                    st.rerun()
+                    # Post to redemption API
+                    success, result = post_redemption(
+                        member['id'],
+                        reward['name'],
+                        reward['points'],
+                        reward['category']
+                    )
+                    if success:
+                        st.session_state.member['points'] -= reward['points']
+                        st.session_state.member['redeemed_rewards'].append(reward)
+                        st.success(f"Redeemed {reward['name']}! Saved to your account.")
+                        st.rerun()
+                    else:
+                        st.error(f"Redemption failed: {result}")
                 else:
                     st.error("Not enough points!")
 
@@ -646,11 +682,21 @@ def render_rewards_catalog():
                     st.button(f"Need {reward['points'] - member['points']:,} more pts", disabled=True, key=f"cat_{reward['id']}")
                 else:
                     if st.button("Redeem Now", key=f"cat_{reward['id']}", type="primary"):
-                        st.session_state.member['points'] -= reward['points']
-                        st.session_state.member['redeemed_rewards'].append(reward)
-                        st.success(f"Successfully redeemed {reward['name']}!")
-                        st.balloons()
-                        st.rerun()
+                        # Post to redemption API
+                        success, result = post_redemption(
+                            member['id'],
+                            reward['name'],
+                            reward['points'],
+                            reward['category']
+                        )
+                        if success:
+                            st.session_state.member['points'] -= reward['points']
+                            st.session_state.member['redeemed_rewards'].append(reward)
+                            st.success(f"Successfully redeemed {reward['name']}! Saved to your account.")
+                            st.balloons()
+                            st.rerun()
+                        else:
+                            st.error(f"Redemption failed: {result}")
 
 def render_badges():
     """Render badges page"""
