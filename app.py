@@ -1175,9 +1175,9 @@ def render_transaction_history():
     if sort_order == "Newest First":
         filtered_tx.reverse()
     elif sort_order == "Highest Points":
-        filtered_tx.sort(key=lambda x: x['points'], reverse=True)
+        filtered_tx.sort(key=lambda x: x.get('points', 0) or 0, reverse=True)
     elif sort_order == "Highest Amount":
-        filtered_tx.sort(key=lambda x: x['amount'], reverse=True)
+        filtered_tx.sort(key=lambda x: x.get('amount', 0) or 0, reverse=True)
 
     st.markdown("---")
 
@@ -1186,16 +1186,19 @@ def render_transaction_history():
         with st.container(border=True):
             col1, col2, col3, col4 = st.columns([2, 3, 1, 1])
             with col1:
-                st.caption(tx['date'])
+                st.caption(tx.get('date', 'N/A'))
                 st.markdown(f"**{tx.get('category', 'Purchase')}**")
             with col2:
-                st.markdown(f"**{tx['description']}**")
-                st.caption(f"${tx['amount']:.2f}")
+                st.markdown(f"**{tx.get('description', 'Transaction')}**")
+                amount = tx.get('amount', 0) or 0
+                st.caption(f"${amount:.2f}")
             with col3:
-                st.markdown(f":green[**+{tx['points']:,} pts**]")
+                points = tx.get('points', 0) or 0
+                st.markdown(f":green[**+{points:,} pts**]")
             with col4:
                 st.caption("Balance")
-                st.markdown(f"**{tx['balance']:,}**")
+                balance = tx.get('balance', 0) or 0
+                st.markdown(f"**{balance:,}**")
 
 def render_responsible_ai():
     """Render Responsible AI dashboard"""
