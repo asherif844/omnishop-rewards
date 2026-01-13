@@ -43,8 +43,9 @@ def fetch_transactions():
     return None
 
 def post_redemption(customer_id, reward_name, points_cost, reward_category, reward_value):
-    """Post a redemption to the API"""
+    """Post a redemption to the API and update customer balance"""
     try:
+        # First, post the redemption record
         payload = {
             "customerId": customer_id,
             "rewardName": reward_name,
@@ -62,12 +63,73 @@ def post_redemption(customer_id, reward_name, points_cost, reward_category, rewa
             json=payload,
             timeout=10
         )
+
         if response.status_code in [200, 201]:
+            # Also update the customer's balance in the API
+            update_customer_balance(customer_id, points_cost)
             return True, response.json() if response.text else {"status": "success"}
         else:
             return False, f"API returned status {response.status_code}"
     except Exception as e:
         return False, str(e)
+
+def update_customer_balance(customer_id, points_to_deduct):
+    """Update customer balance by deducting redeemed points"""
+    try:
+        # Get current balance
+        current_data = fetch_customer_data()
+        if current_data:
+            new_balance = current_data.get('pointsBalance', 0) - points_to_deduct
+
+            # Update balance via PUT/PATCH
+            payload = {
+                "customerId": customer_id,
+                "pointsBalance": new_balance,
+                "pointsRedeemed": points_to_deduct
+            }
+
+            # Try PUT first
+            response = requests.put(
+                f"{API_BASE_URL}/customers/{customer_id}/balance/",
+                headers={
+                    "ngrok-skip-browser-warning": "true",
+                    "Content-Type": "application/json"
+                },
+                json=payload,
+                timeout=10
+            )
+
+            # If PUT fails, try PATCH
+            if response.status_code not in [200, 201, 204]:
+                response = requests.patch(
+                    f"{API_BASE_URL}/customers/{customer_id}/balance/",
+                    headers={
+                        "ngrok-skip-browser-warning": "true",
+                        "Content-Type": "application/json"
+                    },
+                    json=payload,
+                    timeout=10
+                )
+
+            # If both fail, try POST to a redemption balance endpoint
+            if response.status_code not in [200, 201, 204]:
+                requests.post(
+                    f"{API_BASE_URL}/customers/{customer_id}/redeem/",
+                    headers={
+                        "ngrok-skip-browser-warning": "true",
+                        "Content-Type": "application/json"
+                    },
+                    json={"pointsToDeduct": points_to_deduct},
+                    timeout=10
+                )
+
+            # Clear cache so next fetch gets updated balance
+            fetch_customer_data.clear()
+
+            return True
+    except Exception as e:
+        print(f"Error updating balance: {e}")
+    return False
 
 def analyze_purchase_patterns(transactions):
     """Analyze purchase history to identify patterns and preferences"""
