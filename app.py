@@ -45,14 +45,12 @@ def fetch_transactions():
 def post_redemption(customer_id, reward_name, points_cost, reward_category, reward_value):
     """Post a redemption to the API and update customer balance"""
     try:
-        # First, post the redemption record
+        # Post the redemption with the correct payload format
         payload = {
             "customerId": customer_id,
-            "rewardName": reward_name,
-            "pointsRedeemed": points_cost,
-            "category": reward_category,
-            "rewardValue": reward_value,
-            "redeemedAt": datetime.now().isoformat()
+            "pointsToRedeem": points_cost,
+            "pointsCost": points_cost,
+            "productToRedeem": reward_name
         }
         response = requests.post(
             f"{API_BASE_URL}/redemptions/",
@@ -65,11 +63,11 @@ def post_redemption(customer_id, reward_name, points_cost, reward_category, rewa
         )
 
         if response.status_code in [200, 201]:
-            # Also update the customer's balance in the API
-            update_customer_balance(customer_id, points_cost)
+            # Clear cache so next fetch gets updated balance
+            fetch_customer_data.clear()
             return True, response.json() if response.text else {"status": "success"}
         else:
-            return False, f"API returned status {response.status_code}"
+            return False, f"API returned status {response.status_code}: {response.text}"
     except Exception as e:
         return False, str(e)
 
